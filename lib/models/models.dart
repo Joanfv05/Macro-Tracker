@@ -6,8 +6,8 @@ class FoodEntry {
   final double carbs;
   final double fat;
   final double grams;
-  final String date;
-  final String meal;
+  final String date; // YYYY-MM-DD
+  final String meal; // breakfast, lunch, dinner, snack
 
   FoodEntry({
     this.id,
@@ -52,7 +52,7 @@ class DayLog {
   final double protein;
   final double carbs;
   final double fat;
-  final double water;
+  final double water; // litros
   final int steps;
 
   DayLog({
@@ -127,8 +127,9 @@ class UserProfile {
   final int age;
   final double weight;
   final double height;
-  final String gender;
-  final String goal;
+  final String gender; // 'Hombre' o 'Mujer'
+  final String goal;   // 'Definición', 'Mantenimiento',
+  final String activity;
 
   const UserProfile({
     this.name = '',
@@ -137,6 +138,7 @@ class UserProfile {
     this.height = 170,
     this.gender = 'Hombre',
     this.goal = 'Definición',
+    this.activity = 'moderate',
   });
 
   Map<String, dynamic> toMap() => {
@@ -146,6 +148,7 @@ class UserProfile {
     'height': height,
     'gender': gender,
     'goal': goal,
+    'activity': activity,
   };
 
   factory UserProfile.fromMap(Map<String, dynamic> map) => UserProfile(
@@ -155,5 +158,6 @@ class UserProfile {
     height: (map['height'] ?? 170).toDouble(),
     gender: map['gender'] ?? 'Hombre',
     goal: map['goal'] ?? 'Definición',
+    activity: map['activity'] ?? 'moderate',
   );
 }

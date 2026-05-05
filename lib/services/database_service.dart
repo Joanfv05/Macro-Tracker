@@ -65,6 +65,7 @@ class DatabaseService {
             height REAL,
             gender TEXT,
             goal TEXT
+            activity TEXT
           )
         ''');
         // Insert default goals
@@ -85,6 +86,7 @@ class DatabaseService {
           'height': 170,
           'gender': 'Hombre',
           'goal': 'Definición',
+          'activity': 'moderate',
         });
       },
       onUpgrade: (db, oldVersion, newVersion) async {

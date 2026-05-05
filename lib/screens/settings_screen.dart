@@ -18,21 +18,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late TextEditingController _fat;
   late TextEditingController _water;
   late TextEditingController _steps;
-  bool _initialized = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_initialized) {
-      final goals = context.read<NutritionProvider>().goals;
-      _calories = TextEditingController(text: goals.calories.toStringAsFixed(0));
-      _protein = TextEditingController(text: goals.protein.toStringAsFixed(0));
-      _carbs = TextEditingController(text: goals.carbs.toStringAsFixed(0));
-      _fat = TextEditingController(text: goals.fat.toStringAsFixed(0));
-      _water = TextEditingController(text: goals.water.toStringAsFixed(1));
-      _steps = TextEditingController(text: goals.steps.toString());
-      _initialized = true;
-    }
+    // Actualizar los controladores cuando cambien los goals
+    final goals = context.watch<NutritionProvider>().goals;
+    _calories = TextEditingController(text: goals.calories.toStringAsFixed(0));
+    _protein = TextEditingController(text: goals.protein.toStringAsFixed(0));
+    _carbs = TextEditingController(text: goals.carbs.toStringAsFixed(0));
+    _fat = TextEditingController(text: goals.fat.toStringAsFixed(0));
+    _water = TextEditingController(text: goals.water.toStringAsFixed(1));
+    _steps = TextEditingController(text: goals.steps.toString());
   }
 
   @override
@@ -69,12 +66,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Ajusta tus objetivos diarios manualmente',
+                  'Tus macros recomendados según tu perfil',
                   style: TextStyle(
                       color: Colors.white.withOpacity(0.4), fontSize: 14),
                 ),
 
                 const SizedBox(height: 28),
+
+                // Botón para recalcular desde el perfil
+                Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  child: OutlinedButton.icon(
+                    onPressed: _recalculateFromProfile,
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text('Recalcular desde mi perfil'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF00D4AA),
+                      side: const BorderSide(color: Color(0xFF00D4AA)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
 
                 _SectionHeader('Macros diarios'),
                 const SizedBox(height: 12),
@@ -156,8 +171,91 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _save() {
+  void _recalculateFromProfile() async {
+    final provider = context.read<NutritionProvider>();
+    final profile = provider.profile;
+
+    // Calcular con las mismas fórmulas que en ProfileScreen
+    final weight = profile.weight;
+    final height = profile.height;
+    final age = profile.age;
+    final gender = profile.gender;
+    final goal = profile.goal;
+    final activity = profile.activity;
+
+    // Mifflin-St Jeor
+    double bmr;
+    if (gender == 'Mujer') {
+      bmr = (10 * weight) + (6.25 * height) - (5 * age) - 161;
+    } else {
+      bmr = (10 * weight) + (6.25 * height) - (5 * age) + 5;
+    }
+
+    // Factor de actividad
+    double activityFactor;
+    switch (activity) {
+      case 'sedentary': activityFactor = 1.2; break;
+      case 'light': activityFactor = 1.375; break;
+      case 'moderate': activityFactor = 1.55; break;
+      case 'active': activityFactor = 1.725; break;
+      case 'very_active': activityFactor = 1.9; break;
+      default: activityFactor = 1.55;
+    }
+
+    final tdee = bmr * activityFactor;
+
+    // Ajuste según objetivo
+    int adjustment;
+    switch (goal) {
+      case 'Definición': adjustment = -400; break;
+      case 'Volumen': adjustment = 300; break;
+      default: adjustment = 0;
+    }
+
+    final recommendedCalories = tdee + adjustment;
+
+    // Proteína según objetivo
+    double proteinMultiplier;
+    switch (goal) {
+      case 'Definición': proteinMultiplier = 2.2; break;
+      case 'Volumen': proteinMultiplier = 1.8; break;
+      default: proteinMultiplier = 1.6;
+    }
+    final recommendedProtein = weight * proteinMultiplier;
+
+    // Grasa según objetivo
+    double fatPercentage;
+    switch (goal) {
+      case 'Definición': fatPercentage = 0.25; break;
+      case 'Volumen': fatPercentage = 0.28; break;
+      default: fatPercentage = 0.30;
+    }
+    final recommendedFat = recommendedCalories * fatPercentage / 9;
+    final recommendedCarbs = (recommendedCalories - (recommendedProtein * 4) - (recommendedFat * 9)) / 4;
+    final recommendedWater = weight * 0.035;
+
+    // Actualizar los controladores
+    setState(() {
+      _calories.text = recommendedCalories.toStringAsFixed(0);
+      _protein.text = recommendedProtein.toStringAsFixed(0);
+      _carbs.text = recommendedCarbs.clamp(0, 999).toStringAsFixed(0);
+      _fat.text = recommendedFat.toStringAsFixed(0);
+      _water.text = recommendedWater.toStringAsFixed(1);
+    });
+
+    // Mostrar confirmación
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Macros calculados: ${recommendedCalories.toStringAsFixed(0)} kcal'),
+        backgroundColor: const Color(0xFF00D4AA),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _save() async {
     if (!_formKey.currentState!.validate()) return;
+
     final goals = UserGoals(
       calories: double.tryParse(_calories.text) ?? 2000,
       protein: double.tryParse(_protein.text) ?? 150,
@@ -166,7 +264,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       water: double.tryParse(_water.text) ?? 2.5,
       steps: int.tryParse(_steps.text) ?? 8000,
     );
-    context.read<NutritionProvider>().saveGoals(goals);
+
+    await context.read<NutritionProvider>().saveGoals(goals);
+
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Objetivos guardados ✓'),

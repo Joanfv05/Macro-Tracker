@@ -17,6 +17,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _height = TextEditingController();
   String _gender = 'Hombre';
   String _goal = 'Definición';
+  String _activity = 'moderate'; // Nivel de actividad
   bool _loaded = false;
 
   @override
@@ -35,28 +36,72 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _height.text = profile.height.toString();
       _gender = profile.gender;
       _goal = profile.goal;
+      _activity = profile.activity;
       _loaded = true;
     });
   }
 
-  // Calcular calorías recomendadas según perfil
-  double _calculateRecommendedCalories(double weight, double height, int age, String gender, String goal) {
-    // Calcular BMR (Harris-Benedict)
-    double bmr;
+  // Calcular TMB con fórmula Mifflin-St Jeor (1990) - LA MÁS PRECISA ACTUALMENTE
+  double _calculateBMR(double weight, double height, int age, String gender) {
+    // Mifflin-St Jeor
     if (gender == 'Mujer') {
-      bmr = 655.1 + (9.563 * weight) + (1.85 * height) - (4.676 * age);
+      return (10 * weight) + (6.25 * height) - (5 * age) - 161;
     } else {
-      bmr = 66.47 + (13.75 * weight) + (5.003 * height) - (6.755 * age);
+      return (10 * weight) + (6.25 * height) - (5 * age) + 5;
     }
+  }
 
-    // Factor de actividad (asumimos moderado = 1.55)
-    final tdee = bmr * 1.55;
+  // Factor de actividad según nivel
+  double _getActivityFactor(String activity) {
+    switch (activity) {
+      case 'sedentary':   // Poco o nada de ejercicio
+        return 1.2;
+      case 'light':       // Ejercicio 1-3 días/semana
+        return 1.375;
+      case 'moderate':    // Ejercicio 3-5 días/semana
+        return 1.55;
+      case 'active':      // Ejercicio 6-7 días/semana
+        return 1.725;
+      case 'very_active': // Ejercicio 2 veces/día o trabajo físico
+        return 1.9;
+      default:
+        return 1.55;
+    }
+  }
 
-    // Ajuste según objetivo
+  // Ajuste calórico según objetivo (valores actualizados 2026)
+  int _getCalorieAdjustment(String goal) {
     switch (goal) {
-      case 'Definición': return tdee - 400;
-      case 'Volumen': return tdee + 300;
-      default: return tdee;
+      case 'Definición':   // Déficit moderado para preservar músculo
+        return -400;
+      case 'Volumen':      // Superávit moderado para ganancia limpia
+        return 300;
+      default:             // Mantenimiento
+        return 0;
+    }
+  }
+
+  // Calcular proteína según objetivo (g/kg peso)
+  double _calculateProtein(double weight, String goal) {
+    switch (goal) {
+      case 'Definición':   // Más proteína para preservar músculo en déficit
+        return weight * 2.2;
+      case 'Volumen':      // Proteína moderada para ganancia
+        return weight * 1.8;
+      default:             // Mantenimiento
+        return weight * 1.6;
+    }
+  }
+
+  // Calcular grasa según objetivo (% de calorías)
+  double _calculateFatPercentage(String goal) {
+    switch (goal) {
+      case 'Definición':   // Grasa moderada-baja
+        return 0.25;
+      case 'Volumen':      // Grasa moderada
+        return 0.28;
+      default:             // Mantenimiento
+        return 0.30;
     }
   }
 
@@ -72,14 +117,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
       height: height,
       gender: _gender,
       goal: _goal,
+      activity: _activity,
     );
 
     await context.read<NutritionProvider>().saveProfile(profile);
 
-    // Recalcular objetivos según el nuevo perfil
-    final recommendedCalories = _calculateRecommendedCalories(weight, height, age, _gender, _goal);
-    final recommendedProtein = weight * 2.2; // 2.2g por kg de peso
-    final recommendedFat = recommendedCalories * 0.25 / 9; // 25% de grasas
+    // Calcular objetivos con fórmulas actualizadas
+    final bmr = _calculateBMR(weight, height, age, _gender);
+    final tdee = bmr * _getActivityFactor(_activity);
+    final adjustment = _getCalorieAdjustment(_goal);
+    final recommendedCalories = tdee + adjustment;
+
+    final recommendedProtein = _calculateProtein(weight, _goal);
+    final fatPercentage = _calculateFatPercentage(_goal);
+    final recommendedFat = recommendedCalories * fatPercentage / 9;
     final recommendedCarbs = (recommendedCalories - (recommendedProtein * 4) - (recommendedFat * 9)) / 4;
 
     final goals = UserGoals(
@@ -87,7 +138,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       protein: recommendedProtein,
       carbs: recommendedCarbs.clamp(0, 999),
       fat: recommendedFat,
-      water: 2.5,
+      water: weight * 0.035, // 35ml por kg de peso
       steps: 8000,
     );
 
@@ -95,9 +146,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Perfil y objetivos actualizados ✓'),
-          backgroundColor: Color(0xFF00D4AA),
+        SnackBar(
+          content: Text('Perfil y objetivos actualizados ✓\nCalorías: ${recommendedCalories.toStringAsFixed(0)} kcal'),
+          backgroundColor: const Color(0xFF00D4AA),
+          duration: const Duration(seconds: 3),
         ),
       );
     }
@@ -115,7 +167,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (imc < 18.5) return 'Bajo peso';
     if (imc < 25) return 'Normal';
     if (imc < 30) return 'Sobrepeso';
-    return 'Obesidad';
+    if (imc < 35) return 'Obesidad I';
+    if (imc < 40) return 'Obesidad II';
+    return 'Obesidad III';
   }
 
   Color _imcColor(double imc) {
@@ -164,7 +218,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(height: 6),
               Text(
-                'Tus datos personales',
+                'Tus datos personales para cálculos precisos',
                 style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 14),
               ),
 
@@ -311,6 +365,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
 
               const SizedBox(height: 20),
+              _SectionLabel('Nivel de actividad'),
+              const SizedBox(height: 12),
+
+              _ActivitySelector(
+                value: _activity,
+                onChanged: (v) => setState(() => _activity = v),
+              ),
+
+              const SizedBox(height: 20),
               _SectionLabel('Objetivo'),
               const SizedBox(height: 12),
 
@@ -426,13 +489,80 @@ class _GenderSelector extends StatelessWidget {
           style: const TextStyle(color: Colors.white, fontSize: 14),
           icon: Icon(Icons.expand_more, color: Colors.white.withOpacity(0.4)),
           isExpanded: true,
-          items: ['Hombre', 'Mujer'].map((g) => DropdownMenuItem(
+          items: ['Hombre', 'Mujer', 'Otro'].map((g) => DropdownMenuItem(
             value: g,
             child: Text(g),
           )).toList(),
           onChanged: (v) => onChanged(v!),
         ),
       ),
+    );
+  }
+}
+
+class _ActivitySelector extends StatelessWidget {
+  final String value;
+  final Function(String) onChanged;
+
+  const _ActivitySelector({required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final activities = [
+      ('sedentary', 'Sedentario', 'Poco o nada de ejercicio'),
+      ('light', 'Ligero', 'Ejercicio 1-3 días/semana'),
+      ('moderate', 'Moderado', 'Ejercicio 3-5 días/semana'),
+      ('active', 'Activo', 'Ejercicio 6-7 días/semana'),
+      ('very_active', 'Muy activo', 'Ejercicio 2 veces/día o trabajo físico'),
+    ];
+
+    return Column(
+      children: activities.map((act) {
+        final selected = value == act.$1;
+        return GestureDetector(
+          onTap: () => onChanged(act.$1),
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: selected
+                  ? const Color(0xFF00D4AA).withOpacity(0.1)
+                  : const Color(0xFF1A1A1A),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: selected
+                    ? const Color(0xFF00D4AA)
+                    : Colors.transparent,
+                width: 1.5,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  selected ? Icons.check_circle : Icons.radio_button_unchecked,
+                  color: selected ? const Color(0xFF00D4AA) : Colors.white38,
+                  size: 20,
+                ),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(act.$2,
+                        style: TextStyle(
+                          color: selected ? const Color(0xFF00D4AA) : Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        )),
+                    Text(act.$3,
+                        style: TextStyle(
+                            color: Colors.white.withOpacity(0.4), fontSize: 11)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 }
@@ -446,9 +576,9 @@ class _GoalSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final goals = [
-      ('Definición', Icons.trending_down, 'Perder grasa manteniendo músculo'),
-      ('Mantenimiento', Icons.trending_flat, 'Mantener peso y composición'),
-      ('Volumen', Icons.trending_up, 'Ganar masa muscular'),
+      ('Definición', Icons.trending_down, 'Perder grasa (déficit -400 kcal)'),
+      ('Mantenimiento', Icons.trending_flat, 'Mantener peso'),
+      ('Volumen', Icons.trending_up, 'Ganar músculo (superávit +300 kcal)'),
     ];
 
     return Column(
