@@ -37,6 +37,7 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
         const SnackBar(
           content: Text('Producto no encontrado en la base de datos'),
           backgroundColor: Color(0xFFFF6B6B),
+          duration: Duration(seconds: 2),
         ),
       );
       setState(() => _processing = false);
@@ -63,6 +64,10 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
             icon: const Icon(Icons.flash_on, color: Colors.white),
             onPressed: () => _controller.toggleTorch(),
           ),
+          IconButton(
+            icon: const Icon(Icons.switch_camera, color: Colors.white),
+            onPressed: () => _controller.switchCamera(),
+          ),
         ],
       ),
       body: Stack(
@@ -71,18 +76,16 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
             controller: _controller,
             onDetect: _onDetect,
           ),
-          // Marco guía
           Center(
             child: Container(
               width: 260,
-              height: 160,
+              height: 200,
               decoration: BoxDecoration(
                 border: Border.all(color: const Color(0xFF00D4AA), width: 2),
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
           ),
-          // Texto guía
           Positioned(
             bottom: 80,
             left: 0,
@@ -91,11 +94,11 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.6),
+                  color: Colors.black.withOpacity(0.7),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: const Text(
-                  'Apunta al código de barras del producto',
+                  'Apunta al código de barras',
                   style: TextStyle(color: Colors.white, fontSize: 13),
                 ),
               ),

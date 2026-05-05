@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../providers/nutrition_provider.dart';
 import '../models/models.dart';
 import '../services/food_api_service.dart';
+import 'barcode_scanner_screen.dart';
 
 class AddFoodScreen extends StatefulWidget {
   const AddFoodScreen({super.key});
@@ -53,11 +54,10 @@ class _AddFoodScreenState extends State<AddFoodScreen>
         _searching = false;
       });
 
-      // Si no hay resultados, mostrar mensaje
       if (results.isEmpty && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('No se encontraron alimentos. Usa la pestaña "Manual" para añadirlo.'),
+            content: Text('No se encontraron alimentos. Usa "Manual" o escanea el código de barras.'),
             backgroundColor: Color(0xFFFFB347),
             duration: Duration(seconds: 3),
           ),
@@ -66,54 +66,51 @@ class _AddFoodScreenState extends State<AddFoodScreen>
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF0D0D0D),
-        title: const Text('Añadir comida',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-        bottom: TabBar(
-          controller: _tabs,
-          labelColor: const Color(0xFF00D4AA),
-          unselectedLabelColor: Colors.white54,
-          indicatorColor: const Color(0xFF00D4AA),
-          tabs: const [
-            Tab(text: 'Buscar alimento'),
-            Tab(text: 'Manual'),
-          ],
-        ),
+  Future<void> _openScanner() async {
+    final result = await Navigator.push<FoodSearchResult>(
+      context,
+      MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()),
+    );
+
+    if (result != null && mounted) {
+      _showEditableGramsBottomSheet(result);
+    }
+  }
+
+  void _showEditableGramsBottomSheet(FoodSearchResult result) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      body: TabBarView(
-        controller: _tabs,
-        children: [
-          _SearchTab(
-            controller: _searchController,
-            results: _results,
-            searching: _searching,
-            selectedMeal: _selectedMeal,
-            meals: _meals,
-            onMealChanged: (m) => setState(() => _selectedMeal = m),
-            onSearch: _search,
-            onSelectResult: _selectResult,
-          ),
-          _ManualTab(
-            selectedMeal: _selectedMeal,
-            meals: _meals,
-            onMealChanged: (m) => setState(() => _selectedMeal = m),
-            onSave: _saveManual,
-          ),
-        ],
+      builder: (_) => _EditableGramsBottomSheet(
+        result: result,
+        meal: _selectedMeal,
+        onConfirm: (grams, caloriesPer100g, proteinPer100g, carbsPer100g, fatPer100g) async {
+          final factor = grams / 100;
+          final entry = FoodEntry(
+            name: result.name,
+            calories: caloriesPer100g * factor,
+            protein: proteinPer100g * factor,
+            carbs: carbsPer100g * factor,
+            fat: fatPer100g * factor,
+            grams: grams,
+            date: DateFormat('yyyy-MM-dd').format(DateTime.now()),
+            meal: _selectedMeal,
+          );
+          await context.read<NutritionProvider>().addFood(entry);
+          if (mounted) {
+            Navigator.pop(context); // bottom sheet
+            Navigator.pop(context); // add food screen
+          }
+        },
       ),
     );
   }
 
-  void _selectResult(FoodSearchResult result) {
+  void _showGramsBottomSheet(FoodSearchResult result) {
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1A1A1A),
@@ -142,6 +139,60 @@ class _AddFoodScreenState extends State<AddFoodScreen>
             Navigator.pop(context); // add food screen
           }
         },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0D0D0D),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF0D0D0D),
+        title: const Text('Añadir comida',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.qr_code_scanner, color: Color(0xFF00D4AA)),
+            onPressed: _openScanner,
+            tooltip: 'Escanear código de barras',
+          ),
+        ],
+        bottom: TabBar(
+          controller: _tabs,
+          labelColor: const Color(0xFF00D4AA),
+          unselectedLabelColor: Colors.white54,
+          indicatorColor: const Color(0xFF00D4AA),
+          tabs: const [
+            Tab(text: 'Buscar alimento'),
+            Tab(text: 'Manual'),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabs,
+        children: [
+          _SearchTab(
+            controller: _searchController,
+            results: _results,
+            searching: _searching,
+            selectedMeal: _selectedMeal,
+            meals: _meals,
+            onMealChanged: (m) => setState(() => _selectedMeal = m),
+            onSearch: _search,
+            onSelectResult: (r) => _showGramsBottomSheet(r),
+          ),
+          _ManualTab(
+            selectedMeal: _selectedMeal,
+            meals: _meals,
+            onMealChanged: (m) => setState(() => _selectedMeal = m),
+            onSave: _saveManual,
+          ),
+        ],
       ),
     );
   }
@@ -230,7 +281,7 @@ class _SearchTab extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Usa la pestaña "Manual" para añadirlo',
+                  'Usa el escáner 📷 o la pestaña "Manual"',
                   style: TextStyle(color: Colors.white.withOpacity(0.2), fontSize: 12),
                 ),
               ],
@@ -585,6 +636,308 @@ class _GramsBottomSheetState extends State<_GramsBottomSheet> {
           ),
           const SizedBox(height: 16),
         ],
+      ),
+    );
+  }
+}
+
+// ─── Editable Bottom Sheet con macros editables ─────────────────────────────
+
+class _EditableGramsBottomSheet extends StatefulWidget {
+  final FoodSearchResult result;
+  final String meal;
+  final Function(double, double, double, double, double) onConfirm;
+
+  const _EditableGramsBottomSheet({
+    required this.result,
+    required this.meal,
+    required this.onConfirm,
+  });
+
+  @override
+  State<_EditableGramsBottomSheet> createState() => _EditableGramsBottomSheetState();
+}
+
+class _EditableGramsBottomSheetState extends State<_EditableGramsBottomSheet> {
+  double _grams = 100;
+  late double _caloriesPer100g;
+  late double _proteinPer100g;
+  late double _carbsPer100g;
+  late double _fatPer100g;
+
+  final _gramsController = TextEditingController(text: '100');
+  final _caloriesController = TextEditingController();
+  final _proteinController = TextEditingController();
+  final _carbsController = TextEditingController();
+  final _fatController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _caloriesPer100g = widget.result.calories;
+    _proteinPer100g = widget.result.protein;
+    _carbsPer100g = widget.result.carbs;
+    _fatPer100g = widget.result.fat;
+
+    _caloriesController.text = _caloriesPer100g.toStringAsFixed(0);
+    _proteinController.text = _proteinPer100g.toStringAsFixed(1);
+    _carbsController.text = _carbsPer100g.toStringAsFixed(1);
+    _fatController.text = _fatPer100g.toStringAsFixed(1);
+  }
+
+  @override
+  void dispose() {
+    _gramsController.dispose();
+    _caloriesController.dispose();
+    _proteinController.dispose();
+    _carbsController.dispose();
+    _fatController.dispose();
+    super.dispose();
+  }
+
+  double get _factor => _grams / 100;
+
+  double get _totalCalories => _caloriesPer100g * _factor;
+  double get _totalProtein => _proteinPer100g * _factor;
+  double get _totalCarbs => _carbsPer100g * _factor;
+  double get _totalFat => _fatPer100g * _factor;
+
+  void _updateMacros() {
+    setState(() {
+      _caloriesPer100g = double.tryParse(_caloriesController.text) ?? 0;
+      _proteinPer100g = double.tryParse(_proteinController.text) ?? 0;
+      _carbsPer100g = double.tryParse(_carbsController.text) ?? 0;
+      _fatPer100g = double.tryParse(_fatController.text) ?? 0;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+        left: 20,
+        right: 20,
+        top: 20,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(widget.result.name,
+                      style: const TextStyle(
+                          color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                      maxLines: 2),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.edit, color: Color(0xFF00D4AA), size: 20),
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Puedes editar los valores si no son exactos'),
+                        backgroundColor: Color(0xFFFFB347),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${widget.meal}  •  Ajusta los valores si es necesario',
+              style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11),
+            ),
+            const SizedBox(height: 20),
+
+            // Cantidad
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _gramsController,
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(color: Colors.white, fontSize: 18),
+                    decoration: InputDecoration(
+                      labelText: 'Cantidad (g)',
+                      labelStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+                      filled: true,
+                      fillColor: const Color(0xFF252525),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                    onChanged: (v) {
+                      setState(() => _grams = double.tryParse(v) ?? 100);
+                    },
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            // Valores nutricionales editables
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF252525),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  // Calorías
+                  Row(
+                    children: [
+                      const SizedBox(width: 8),
+                      const Icon(Icons.local_fire_department, color: Color(0xFF00D4AA), size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _caloriesController,
+                          keyboardType: TextInputType.number,
+                          style: const TextStyle(color: Color(0xFF00D4AA), fontSize: 16),
+                          decoration: const InputDecoration(
+                            labelText: 'Calorías (por 100g)',
+                            labelStyle: TextStyle(color: Colors.white54, fontSize: 12),
+                            border: InputBorder.none,
+                          ),
+                          onChanged: (_) => _updateMacros(),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Divider(color: Colors.white24, height: 20),
+                  // Proteína
+                  Row(
+                    children: [
+                      const SizedBox(width: 8),
+                      const Icon(Icons.fitness_center, color: Color(0xFF00D4AA), size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _proteinController,
+                          keyboardType: TextInputType.number,
+                          style: const TextStyle(color: Colors.white, fontSize: 16),
+                          decoration: const InputDecoration(
+                            labelText: 'Proteína (por 100g)',
+                            labelStyle: TextStyle(color: Colors.white54, fontSize: 12),
+                            border: InputBorder.none,
+                          ),
+                          onChanged: (_) => _updateMacros(),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Divider(color: Colors.white24, height: 20),
+                  // Carbohidratos
+                  Row(
+                    children: [
+                      const SizedBox(width: 8),
+                      const Icon(Icons.grain, color: Color(0xFFFFB347), size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _carbsController,
+                          keyboardType: TextInputType.number,
+                          style: const TextStyle(color: Colors.white, fontSize: 16),
+                          decoration: const InputDecoration(
+                            labelText: 'Carbohidratos (por 100g)',
+                            labelStyle: TextStyle(color: Colors.white54, fontSize: 12),
+                            border: InputBorder.none,
+                          ),
+                          onChanged: (_) => _updateMacros(),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Divider(color: Colors.white24, height: 20),
+                  // Grasas
+                  Row(
+                    children: [
+                      const SizedBox(width: 8),
+                      const Icon(Icons.opacity, color: Color(0xFFFF6B6B), size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _fatController,
+                          keyboardType: TextInputType.number,
+                          style: const TextStyle(color: Colors.white, fontSize: 16),
+                          decoration: const InputDecoration(
+                            labelText: 'Grasas (por 100g)',
+                            labelStyle: TextStyle(color: Colors.white54, fontSize: 12),
+                            border: InputBorder.none,
+                          ),
+                          onChanged: (_) => _updateMacros(),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Resumen total
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A1A1A),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF00D4AA).withOpacity(0.3)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _MacroPreview(
+                      label: 'Total Kcal',
+                      value: _totalCalories.toStringAsFixed(0),
+                      color: const Color(0xFF00D4AA)),
+                  _MacroPreview(
+                      label: 'Prot',
+                      value: '${_totalProtein.toStringAsFixed(1)}g',
+                      color: const Color(0xFF00D4AA)),
+                  _MacroPreview(
+                      label: 'Carbs',
+                      value: '${_totalCarbs.toStringAsFixed(1)}g',
+                      color: const Color(0xFFFFB347)),
+                  _MacroPreview(
+                      label: 'Grasas',
+                      value: '${_totalFat.toStringAsFixed(1)}g',
+                      color: const Color(0xFFFF6B6B)),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            ElevatedButton(
+              onPressed: () => widget.onConfirm(
+                _grams,
+                _caloriesPer100g,
+                _proteinPer100g,
+                _carbsPer100g,
+                _fatPer100g,
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF00D4AA),
+                foregroundColor: Colors.black,
+                minimumSize: const Size(double.infinity, 48),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text('Añadir',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
       ),
     );
   }
