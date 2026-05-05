@@ -42,12 +42,28 @@ class _AddFoodScreenState extends State<AddFoodScreen>
       setState(() => _results = []);
       return;
     }
+
     setState(() => _searching = true);
+
     final results = await _api.search(query.trim());
-    setState(() {
-      _results = results;
-      _searching = false;
-    });
+
+    if (mounted) {
+      setState(() {
+        _results = results;
+        _searching = false;
+      });
+
+      // Si no hay resultados, mostrar mensaje
+      if (results.isEmpty && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se encontraron alimentos. Usa la pestaña "Manual" para añadirlo.'),
+            backgroundColor: Color(0xFFFFB347),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -120,12 +136,11 @@ class _AddFoodScreenState extends State<AddFoodScreen>
             date: DateFormat('yyyy-MM-dd').format(DateTime.now()),
             meal: _selectedMeal,
           );
-          // ignore: use_build_context_synchronously
           await context.read<NutritionProvider>().addFood(entry);
-          // ignore: use_build_context_synchronously
-          Navigator.pop(context); // bottom sheet
-          // ignore: use_build_context_synchronously
-          Navigator.pop(context); // add food screen
+          if (mounted) {
+            Navigator.pop(context); // bottom sheet
+            Navigator.pop(context); // add food screen
+          }
         },
       ),
     );
@@ -184,13 +199,13 @@ class _SearchTab extends StatelessWidget {
                     borderSide: BorderSide.none,
                   ),
                   prefixIcon:
-                      Icon(Icons.search, color: Colors.white.withOpacity(0.4)),
+                  Icon(Icons.search, color: Colors.white.withOpacity(0.4)),
                   suffixIcon: searching
                       ? const Padding(
-                          padding: EdgeInsets.all(12),
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Color(0xFF00D4AA)),
-                        )
+                    padding: EdgeInsets.all(12),
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Color(0xFF00D4AA)),
+                  )
                       : null,
                 ),
                 onSubmitted: onSearch,
@@ -202,35 +217,49 @@ class _SearchTab extends StatelessWidget {
         Expanded(
           child: results.isEmpty
               ? Center(
-                  child: Text(
-                    'Busca un alimento para ver resultados',
-                    style: TextStyle(color: Colors.white.withOpacity(0.3)),
-                  ),
-                )
-              : ListView.builder(
-                  itemCount: results.length,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemBuilder: (_, i) {
-                    final r = results[i];
-                    return ListTile(
-                      contentPadding:
-                          const EdgeInsets.symmetric(vertical: 4, horizontal: 0),
-                      title: Text(r.name,
-                          style: const TextStyle(
-                              color: Colors.white, fontSize: 14),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis),
-                      subtitle: Text(
-                        '${r.calories.toStringAsFixed(0)} kcal  •  P:${r.protein.toStringAsFixed(1)}g  C:${r.carbs.toStringAsFixed(1)}g  G:${r.fat.toStringAsFixed(1)}g',
-                        style: TextStyle(
-                            color: Colors.white.withOpacity(0.4), fontSize: 12),
-                      ),
-                      trailing: const Icon(Icons.add_circle,
-                          color: Color(0xFF00D4AA)),
-                      onTap: () => onSelectResult(r),
-                    );
-                  },
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.search_off,
+                    size: 48,
+                    color: Colors.white.withOpacity(0.2)),
+                const SizedBox(height: 12),
+                Text(
+                  'No se encontraron alimentos',
+                  style: TextStyle(color: Colors.white.withOpacity(0.4)),
                 ),
+                const SizedBox(height: 8),
+                Text(
+                  'Usa la pestaña "Manual" para añadirlo',
+                  style: TextStyle(color: Colors.white.withOpacity(0.2), fontSize: 12),
+                ),
+              ],
+            ),
+          )
+              : ListView.builder(
+            itemCount: results.length,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemBuilder: (_, i) {
+              final r = results[i];
+              return ListTile(
+                contentPadding:
+                const EdgeInsets.symmetric(vertical: 4, horizontal: 0),
+                title: Text(r.name,
+                    style: const TextStyle(
+                        color: Colors.white, fontSize: 14),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis),
+                subtitle: Text(
+                  '${r.calories.toStringAsFixed(0)} kcal  •  P:${r.protein.toStringAsFixed(1)}g  C:${r.carbs.toStringAsFixed(1)}g  G:${r.fat.toStringAsFixed(1)}g',
+                  style: TextStyle(
+                      color: Colors.white.withOpacity(0.4), fontSize: 12),
+                ),
+                trailing: const Icon(Icons.add_circle,
+                    color: Color(0xFF00D4AA)),
+                onTap: () => onSelectResult(r),
+              );
+            },
+          ),
         ),
       ],
     );
@@ -395,7 +424,7 @@ class _MealSelector extends StatelessWidget {
                   color: active ? Colors.black : Colors.white,
                   fontSize: 13,
                   fontWeight:
-                      active ? FontWeight.w600 : FontWeight.normal,
+                  active ? FontWeight.w600 : FontWeight.normal,
                 ),
               ),
             ),
@@ -497,7 +526,7 @@ class _GramsBottomSheetState extends State<_GramsBottomSheet> {
                   decoration: InputDecoration(
                     labelText: 'Cantidad (g)',
                     labelStyle:
-                        TextStyle(color: Colors.white.withOpacity(0.5)),
+                    TextStyle(color: Colors.white.withOpacity(0.5)),
                     filled: true,
                     fillColor: const Color(0xFF252525),
                     border: OutlineInputBorder(
