@@ -10,6 +10,13 @@ void main() async {
   await initializeDateFormatting('es_ES', null);
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
+  await SystemChrome.setEnabledSystemUIMode(
+    SystemUiMode.immersiveSticky,
+    overlays: [], // Sin overlays (sin barra de navegación ni de estado)
+  );
+
+  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+
   final nutritionProvider = NutritionProvider();
   await nutritionProvider.init();
 
