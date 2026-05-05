@@ -27,7 +27,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _load() async {
     await Future.delayed(Duration.zero);
-
     final profile = context.read<NutritionProvider>().profile;
     setState(() {
       _name.text = profile.name;
@@ -40,22 +39,64 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
   }
 
+  // Calcular calorías recomendadas según perfil
+  double _calculateRecommendedCalories(double weight, double height, int age, String gender, String goal) {
+    // Calcular BMR (Harris-Benedict)
+    double bmr;
+    if (gender == 'Mujer') {
+      bmr = 655.1 + (9.563 * weight) + (1.85 * height) - (4.676 * age);
+    } else {
+      bmr = 66.47 + (13.75 * weight) + (5.003 * height) - (6.755 * age);
+    }
+
+    // Factor de actividad (asumimos moderado = 1.55)
+    final tdee = bmr * 1.55;
+
+    // Ajuste según objetivo
+    switch (goal) {
+      case 'Definición': return tdee - 400;
+      case 'Volumen': return tdee + 300;
+      default: return tdee;
+    }
+  }
+
   Future<void> _save() async {
+    final weight = double.tryParse(_weight.text) ?? 70;
+    final height = double.tryParse(_height.text) ?? 170;
+    final age = int.tryParse(_age.text) ?? 25;
+
     final profile = UserProfile(
       name: _name.text.trim(),
-      age: int.tryParse(_age.text) ?? 25,
-      weight: double.tryParse(_weight.text) ?? 70,
-      height: double.tryParse(_height.text) ?? 170,
+      age: age,
+      weight: weight,
+      height: height,
       gender: _gender,
       goal: _goal,
     );
 
     await context.read<NutritionProvider>().saveProfile(profile);
 
+    // Recalcular objetivos según el nuevo perfil
+    final recommendedCalories = _calculateRecommendedCalories(weight, height, age, _gender, _goal);
+    final recommendedProtein = weight * 2.2; // 2.2g por kg de peso
+    final recommendedFat = recommendedCalories * 0.25 / 9; // 25% de grasas
+    final recommendedCarbs = (recommendedCalories - (recommendedProtein * 4) - (recommendedFat * 9)) / 4;
+
+    final goals = UserGoals(
+      calories: recommendedCalories,
+      protein: recommendedProtein,
+      carbs: recommendedCarbs.clamp(0, 999),
+      fat: recommendedFat,
+      water: 2.5,
+      steps: 8000,
+    );
+
+    await context.read<NutritionProvider>().saveGoals(goals);
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Perfil guardado ✓'),
+          content: Text('Perfil y objetivos actualizados ✓'),
           backgroundColor: Color(0xFF00D4AA),
         ),
       );
