@@ -14,6 +14,12 @@ class DashboardScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<NutritionProvider>(
       builder: (context, provider, _) {
+        // Agrupar comidas por categoría
+        final Map<String, List<FoodEntry>> groupedFoods = {};
+        for (final meal in _meals) {
+          groupedFoods[meal] = provider.foods.where((f) => f.meal == meal).toList();
+        }
+
         return Scaffold(
           backgroundColor: const Color(0xFF0D0D0D),
           body: SafeArea(
@@ -190,6 +196,7 @@ class DashboardScreen extends StatelessWidget {
                   ),
                 ),
 
+                // Comidas agrupadas por categoría
                 if (provider.foods.isEmpty)
                   SliverToBoxAdapter(
                     child: Padding(
@@ -213,14 +220,15 @@ class DashboardScreen extends StatelessWidget {
                 else
                   SliverList(
                     delegate: SliverChildBuilderDelegate(
-                          (context, i) {
-                        final food = provider.foods[i];
-                        return _FoodTile(
-                          food: food,
-                          onDelete: () => provider.deleteFood(food),
+                          (context, index) {
+                        return _MealSection(
+                          meal: _meals[index],
+                          foods: groupedFoods[_meals[index]] ?? [],
+                          onFoodTap: (food) => _showFoodDetailDialog(context, provider, food),
+                          onDelete: (food) => provider.deleteFood(food),
                         );
                       },
-                      childCount: provider.foods.length,
+                      childCount: _meals.length,
                     ),
                   ),
 
@@ -282,7 +290,585 @@ class DashboardScreen extends StatelessWidget {
       ),
     );
   }
+
+  void _showFoodDetailDialog(BuildContext context, NutritionProvider provider, FoodEntry food) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _FoodDetailBottomSheet(
+        food: food,
+        onUpdate: (updatedFood) async {
+          // Eliminar el antiguo y añadir el nuevo
+          await provider.deleteFood(food);
+          await provider.addFood(updatedFood);
+          if (context.mounted) Navigator.pop(context);
+        },
+        onDelete: () async {
+          await provider.deleteFood(food);
+          if (context.mounted) Navigator.pop(context);
+        },
+      ),
+    );
+  }
 }
+
+// Lista de comidas en orden
+const _meals = ['Desayuno', 'Almuerzo', 'Comida', 'Merienda', 'Cena', 'Snack'];
+
+// ─── Meal Section Widget ─────────────────────────────────────────────────────
+
+class _MealSection extends StatelessWidget {
+  final String meal;
+  final List<FoodEntry> foods;
+  final Function(FoodEntry) onFoodTap;
+  final Function(FoodEntry) onDelete;
+
+  const _MealSection({
+    required this.meal,
+    required this.foods,
+    required this.onFoodTap,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (foods.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+          child: Row(
+            children: [
+              _getMealIcon(meal),
+              const SizedBox(width: 8),
+              Text(
+                meal,
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.7),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00D4AA).withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '${foods.length}',
+                  style: const TextStyle(
+                    color: Color(0xFF00D4AA),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        ...foods.map((food) => _FoodTile(
+          food: food,
+          onTap: () => onFoodTap(food),
+          onDelete: () => onDelete(food),
+        )),
+      ],
+    );
+  }
+
+  Widget _getMealIcon(String meal) {
+    IconData icon;
+    Color color;
+    switch (meal) {
+      case 'Desayuno':
+        icon = Icons.bedtime;
+        color = const Color(0xFFFFB347);
+        break;
+      case 'Almuerzo':
+        icon = Icons.lunch_dining;
+        color = const Color(0xFF00D4AA);
+        break;
+      case 'Comida':
+        icon = Icons.dinner_dining;
+        color = const Color(0xFF4FC3F7);
+        break;
+      case 'Merienda':
+        icon = Icons.cake;
+        color = const Color(0xFFA78BFA);
+        break;
+      case 'Cena':
+        icon = Icons.nightlife;
+        color = const Color(0xFFFF6B6B);
+        break;
+      default:
+        icon = Icons.restaurant;
+        color = Colors.white54;
+    }
+    return Icon(icon, color: color, size: 16);
+  }
+}
+
+// ─── Food Tile Widget ────────────────────────────────────────────────────────
+
+class _FoodTile extends StatelessWidget {
+  final FoodEntry food;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  const _FoodTile({
+    required this.food,
+    required this.onTap,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Dismissible(
+      key: Key('food_${food.id}'),
+      direction: DismissDirection.endToStart,
+      onDismissed: (_) => onDelete(),
+      background: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFF4444),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        child: const Icon(Icons.delete, color: Colors.white),
+      ),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A1A1A),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00D4AA).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.restaurant, color: Color(0xFF00D4AA), size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      food.name,
+                      style: const TextStyle(
+                          color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      '${food.grams.toStringAsFixed(0)}g  •  ${food.calories.toStringAsFixed(0)} kcal',
+                      style: TextStyle(
+                          color: Colors.white.withOpacity(0.4), fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    'P:${food.protein.toStringAsFixed(0)}',
+                    style: const TextStyle(
+                        color: Color(0xFF00D4AA), fontSize: 12, fontWeight: FontWeight.w500),
+                  ),
+                  Text(
+                    'C:${food.carbs.toStringAsFixed(0)} G:${food.fat.toStringAsFixed(0)}',
+                    style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 10),
+                  ),
+                ],
+              ),
+              const Icon(Icons.chevron_right, color: Colors.white24, size: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Food Detail Bottom Sheet ───────────────────────────────────────────────
+
+class _FoodDetailBottomSheet extends StatefulWidget {
+  final FoodEntry food;
+  final Function(FoodEntry) onUpdate;
+  final VoidCallback onDelete;
+
+  const _FoodDetailBottomSheet({
+    required this.food,
+    required this.onUpdate,
+    required this.onDelete,
+  });
+
+  @override
+  State<_FoodDetailBottomSheet> createState() => _FoodDetailBottomSheetState();
+}
+
+class _FoodDetailBottomSheetState extends State<_FoodDetailBottomSheet> {
+  late double _grams;
+  late double _calories;
+  late double _protein;
+  late double _carbs;
+  late double _fat;
+  late String _name;
+
+  final _gramsController = TextEditingController();
+  final _caloriesController = TextEditingController();
+  final _proteinController = TextEditingController();
+  final _carbsController = TextEditingController();
+  final _fatController = TextEditingController();
+  final _nameController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _name = widget.food.name;
+    _grams = widget.food.grams;
+    _calories = widget.food.calories;
+    _protein = widget.food.protein;
+    _carbs = widget.food.carbs;
+    _fat = widget.food.fat;
+
+    _nameController.text = _name;
+    _gramsController.text = _grams.toStringAsFixed(0);
+    _caloriesController.text = _calories.toStringAsFixed(0);
+    _proteinController.text = _protein.toStringAsFixed(1);
+    _carbsController.text = _carbs.toStringAsFixed(1);
+    _fatController.text = _fat.toStringAsFixed(1);
+  }
+
+  @override
+  void dispose() {
+    _gramsController.dispose();
+    _caloriesController.dispose();
+    _proteinController.dispose();
+    _carbsController.dispose();
+    _fatController.dispose();
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  void _updateValues() {
+    setState(() {
+      _name = _nameController.text.trim();
+      _grams = double.tryParse(_gramsController.text) ?? 0;
+      _calories = double.tryParse(_caloriesController.text) ?? 0;
+      _protein = double.tryParse(_proteinController.text) ?? 0;
+      _carbs = double.tryParse(_carbsController.text) ?? 0;
+      _fat = double.tryParse(_fatController.text) ?? 0;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+        left: 20,
+        right: 20,
+        top: 20,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Detalle del alimento',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, color: Color(0xFFFF6B6B)),
+                  onPressed: () {
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        backgroundColor: const Color(0xFF1A1A1A),
+                        title: const Text('Eliminar', style: TextStyle(color: Colors.white)),
+                        content: const Text('¿Seguro que quieres eliminar este alimento?',
+                            style: TextStyle(color: Colors.white70)),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('Cancelar'),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              widget.onDelete();
+                            },
+                            child: const Text('Eliminar', style: TextStyle(color: Color(0xFFFF6B6B))),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // Nombre
+            TextField(
+              controller: _nameController,
+              style: const TextStyle(color: Colors.white, fontSize: 16),
+              decoration: InputDecoration(
+                labelText: 'Nombre',
+                labelStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+                filled: true,
+                fillColor: const Color(0xFF252525),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+              onChanged: (_) => _updateValues(),
+            ),
+            const SizedBox(height: 16),
+
+            // Cantidad
+            TextField(
+              controller: _gramsController,
+              keyboardType: TextInputType.number,
+              style: const TextStyle(color: Colors.white, fontSize: 16),
+              decoration: InputDecoration(
+                labelText: 'Cantidad (g)',
+                labelStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+                suffixText: 'g',
+                suffixStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                filled: true,
+                fillColor: const Color(0xFF252525),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+              onChanged: (_) => _updateValues(),
+            ),
+            const SizedBox(height: 16),
+
+            // Macros
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF252525),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  _MacroEditRow(
+                    icon: Icons.local_fire_department,
+                    iconColor: const Color(0xFF00D4AA),
+                    label: 'Calorías',
+                    controller: _caloriesController,
+                    unit: 'kcal',
+                    onChanged: (_) => _updateValues(),
+                  ),
+                  const Divider(color: Colors.white24, height: 20),
+                  _MacroEditRow(
+                    icon: Icons.fitness_center,
+                    iconColor: const Color(0xFF00D4AA),
+                    label: 'Proteína',
+                    controller: _proteinController,
+                    unit: 'g',
+                    onChanged: (_) => _updateValues(),
+                  ),
+                  const Divider(color: Colors.white24, height: 20),
+                  _MacroEditRow(
+                    icon: Icons.grain,
+                    iconColor: const Color(0xFFFFB347),
+                    label: 'Carbohidratos',
+                    controller: _carbsController,
+                    unit: 'g',
+                    onChanged: (_) => _updateValues(),
+                  ),
+                  const Divider(color: Colors.white24, height: 20),
+                  _MacroEditRow(
+                    icon: Icons.opacity,
+                    iconColor: const Color(0xFFFF6B6B),
+                    label: 'Grasas',
+                    controller: _fatController,
+                    unit: 'g',
+                    onChanged: (_) => _updateValues(),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Resumen por 100g
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A1A1A),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF00D4AA).withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Valores por 100g',
+                    style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _MacroPreview(
+                        label: 'Kcal',
+                        value: ((_calories / _grams) * 100).toStringAsFixed(0),
+                        color: const Color(0xFF00D4AA),
+                      ),
+                      _MacroPreview(
+                        label: 'Prot',
+                        value: '${((_protein / _grams) * 100).toStringAsFixed(1)}g',
+                        color: const Color(0xFF00D4AA),
+                      ),
+                      _MacroPreview(
+                        label: 'Carbs',
+                        value: '${((_carbs / _grams) * 100).toStringAsFixed(1)}g',
+                        color: const Color(0xFFFFB347),
+                      ),
+                      _MacroPreview(
+                        label: 'Grasas',
+                        value: '${((_fat / _grams) * 100).toStringAsFixed(1)}g',
+                        color: const Color(0xFFFF6B6B),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white54,
+                      side: const BorderSide(color: Colors.white24),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text('Cancelar'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      final updatedFood = FoodEntry(
+                        id: widget.food.id,
+                        name: _name,
+                        calories: _calories,
+                        protein: _protein,
+                        carbs: _carbs,
+                        fat: _fat,
+                        grams: _grams,
+                        date: widget.food.date,
+                        meal: widget.food.meal,
+                      );
+                      widget.onUpdate(updatedFood);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF00D4AA),
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text('Guardar cambios', style: TextStyle(fontWeight: FontWeight.w600)),                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MacroEditRow extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final TextEditingController controller;
+  final String unit;
+  final Function(String) onChanged;
+
+  const _MacroEditRow({
+    required this.icon,
+    required this.iconColor,
+    required this.label,
+    required this.controller,
+    required this.unit,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, color: iconColor, size: 20),
+        const SizedBox(width: 12),
+        Expanded(
+          child: TextField(
+            controller: controller,
+            keyboardType: TextInputType.number,
+            style: const TextStyle(color: Colors.white, fontSize: 16),
+            decoration: InputDecoration(
+              labelText: label,
+              labelStyle: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12),
+              suffixText: unit,
+              suffixStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+              border: InputBorder.none,
+            ),
+            onChanged: onChanged,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Date Nav Button ────────────────────────────────────────────────────────
 
 class _DateNavButton extends StatelessWidget {
   final IconData icon;
@@ -310,6 +896,8 @@ class _DateNavButton extends StatelessWidget {
     );
   }
 }
+
+// ─── Macro Bar Widget ───────────────────────────────────────────────────────
 
 class _MacroBar extends StatelessWidget {
   final String label;
@@ -367,86 +955,7 @@ class _MacroBar extends StatelessWidget {
   }
 }
 
-class _FoodTile extends StatelessWidget {
-  final FoodEntry food;
-  final VoidCallback onDelete;
-
-  const _FoodTile({required this.food, required this.onDelete});
-
-  @override
-  Widget build(BuildContext context) {
-    return Dismissible(
-      key: Key('food_${food.id}'),
-      direction: DismissDirection.endToStart,
-      onDismissed: (_) => onDelete(),
-      background: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        decoration: BoxDecoration(
-          color: const Color(0xFFFF4444),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 20),
-        child: const Icon(Icons.delete, color: Colors.white),
-      ),
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: const Color(0xFF00D4AA).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(Icons.restaurant, color: Color(0xFF00D4AA), size: 20),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    food.name,
-                    style: const TextStyle(
-                        color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  Text(
-                    '${food.grams.toStringAsFixed(0)}g  •  ${food.meal}',
-                    style: TextStyle(
-                        color: Colors.white.withOpacity(0.4), fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  '${food.calories.toStringAsFixed(0)} kcal',
-                  style: const TextStyle(
-                      color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
-                ),
-                Text(
-                  'P:${food.protein.toStringAsFixed(0)} C:${food.carbs.toStringAsFixed(0)} G:${food.fat.toStringAsFixed(0)}',
-                  style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
+// ─── Quick Edit Dialog ─────────────────────────────────────────────────────
 
 class _QuickEditDialog extends StatefulWidget {
   final String title;
@@ -648,6 +1157,29 @@ class _QuickButton extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _MacroPreview extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+
+  const _MacroPreview(
+      {required this.label, required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(value,
+            style: TextStyle(
+                color: color, fontSize: 14, fontWeight: FontWeight.w700)),
+        Text(label,
+            style: TextStyle(
+                color: Colors.white.withOpacity(0.4), fontSize: 10)),
+      ],
     );
   }
 }
