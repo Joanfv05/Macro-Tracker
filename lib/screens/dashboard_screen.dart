@@ -19,7 +19,6 @@ class DashboardScreen extends StatelessWidget {
           body: SafeArea(
             child: CustomScrollView(
               slivers: [
-                // ─── Header ────────────────────────────────────────────────
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
@@ -61,12 +60,12 @@ class DashboardScreen extends StatelessWidget {
                             _DateNavButton(
                               icon: Icons.chevron_right,
                               onTap: provider.selectedDate ==
-                                      DateFormat('yyyy-MM-dd').format(DateTime.now())
+                                  DateFormat('yyyy-MM-dd').format(DateTime.now())
                                   ? null
                                   : () {
-                                      final date = DateFormat('yyyy-MM-dd').parse(provider.selectedDate);
-                                      provider.goToDate(date.add(const Duration(days: 1)));
-                                    },
+                                final date = DateFormat('yyyy-MM-dd').parse(provider.selectedDate);
+                                provider.goToDate(date.add(const Duration(days: 1)));
+                              },
                             ),
                           ],
                         ),
@@ -75,7 +74,6 @@ class DashboardScreen extends StatelessWidget {
                   ),
                 ),
 
-                // ─── Calorie Ring ───────────────────────────────────────────
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
@@ -89,7 +87,6 @@ class DashboardScreen extends StatelessWidget {
                   ),
                 ),
 
-                // ─── Macros Row ─────────────────────────────────────────────
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -131,7 +128,6 @@ class DashboardScreen extends StatelessWidget {
 
                 const SliverToBoxAdapter(child: SizedBox(height: 16)),
 
-                // ─── Agua y Pasos ───────────────────────────────────────────
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -167,7 +163,6 @@ class DashboardScreen extends StatelessWidget {
 
                 const SliverToBoxAdapter(child: SizedBox(height: 24)),
 
-                // ─── Comidas del día ────────────────────────────────────────
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -218,7 +213,7 @@ class DashboardScreen extends StatelessWidget {
                 else
                   SliverList(
                     delegate: SliverChildBuilderDelegate(
-                      (context, i) {
+                          (context, i) {
                         final food = provider.foods[i];
                         return _FoodTile(
                           food: food,
@@ -282,7 +277,7 @@ class DashboardScreen extends StatelessWidget {
         unit: ' pasos',
         min: 0,
         max: 50000,
-        step: 500,
+        step: 100,
         onSave: (v) => provider.updateSteps(v.toInt()),
       ),
     );
@@ -478,42 +473,121 @@ class _QuickEditDialog extends StatefulWidget {
 
 class _QuickEditDialogState extends State<_QuickEditDialog> {
   late double _value;
+  final TextEditingController _controller = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _value = widget.initialValue;
+    _controller.text = _value % 1 == 0 ? _value.toStringAsFixed(0) : _value.toStringAsFixed(2);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _updateValue(double newValue) {
+    setState(() {
+      _value = newValue.clamp(widget.min, widget.max);
+      if (widget.title == 'Pasos') {
+        _controller.text = _value.toInt().toString();
+      } else {
+        _controller.text = _value.toStringAsFixed(2);
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final isSteps = widget.title == 'Pasos';
+    final isWater = widget.title == 'Agua (litros)';
+
     return AlertDialog(
       backgroundColor: const Color(0xFF1A1A1A),
       title: Text(widget.title, style: const TextStyle(color: Colors.white)),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            '${_value % 1 == 0 ? _value.toStringAsFixed(0) : _value.toStringAsFixed(2)}${widget.unit}',
+          TextField(
+            controller: _controller,
+            keyboardType: TextInputType.number,
             style: const TextStyle(
-                color: Color(0xFF00D4AA), fontSize: 32, fontWeight: FontWeight.w700),
+              color: Color(0xFF00D4AA),
+              fontSize: 28,
+              fontWeight: FontWeight.w700,
+            ),
+            textAlign: TextAlign.center,
+            decoration: InputDecoration(
+              suffixText: widget.unit,
+              suffixStyle: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 16),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              filled: true,
+              fillColor: const Color(0xFF252525),
+            ),
+            onChanged: (v) {
+              final val = double.tryParse(v);
+              if (val != null) {
+                _value = val.clamp(widget.min, widget.max);
+              }
+            },
           ),
           const SizedBox(height: 16),
+
+          if (isSteps) ...[
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: [
+                _QuickButton(label: '+100', onTap: () => _updateValue(_value + 100)),
+                _QuickButton(label: '+500', onTap: () => _updateValue(_value + 500)),
+                _QuickButton(label: '+1000', onTap: () => _updateValue(_value + 1000)),
+                _QuickButton(label: '+5000', onTap: () => _updateValue(_value + 5000)),
+                _QuickButton(label: '-100', onTap: () => _updateValue(_value - 100)),
+                _QuickButton(label: '-500', onTap: () => _updateValue(_value - 500)),
+                _QuickButton(label: 'Limpiar', onTap: () => _updateValue(0), isClear: true),
+              ],
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          if (isWater) ...[
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: [
+                _QuickButton(label: '+0.25L', onTap: () => _updateValue(_value + 0.25)),
+                _QuickButton(label: '+0.5L', onTap: () => _updateValue(_value + 0.5)),
+                _QuickButton(label: '+1L', onTap: () => _updateValue(_value + 1)),
+                _QuickButton(label: '-0.25L', onTap: () => _updateValue(_value - 0.25)),
+                _QuickButton(label: '-0.5L', onTap: () => _updateValue(_value - 0.5)),
+                _QuickButton(label: 'Limpiar', onTap: () => _updateValue(0), isClear: true),
+              ],
+            ),
+            const SizedBox(height: 16),
+          ],
+
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               IconButton(
                 onPressed: _value > widget.min
-                    ? () => setState(() => _value = (_value - widget.step).clamp(widget.min, widget.max))
+                    ? () => _updateValue(_value - widget.step)
                     : null,
-                icon: const Icon(Icons.remove_circle, color: Color(0xFF00D4AA), size: 36),
+                icon: const Icon(Icons.remove_circle, color: Color(0xFF00D4AA), size: 40),
               ),
               const SizedBox(width: 24),
               IconButton(
                 onPressed: _value < widget.max
-                    ? () => setState(() => _value = (_value + widget.step).clamp(widget.min, widget.max))
+                    ? () => _updateValue(_value + widget.step)
                     : null,
-                icon: const Icon(Icons.add_circle, color: Color(0xFF00D4AA), size: 36),
+                icon: const Icon(Icons.add_circle, color: Color(0xFF00D4AA), size: 40),
               ),
             ],
           ),
@@ -522,7 +596,7 @@ class _QuickEditDialogState extends State<_QuickEditDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: Text('Cancelar', style: TextStyle(color: Colors.white.withOpacity(0.4))),
+          child: Text('Cancelar', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 16)),
         ),
         ElevatedButton(
           onPressed: () {
@@ -532,10 +606,48 @@ class _QuickEditDialogState extends State<_QuickEditDialog> {
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF00D4AA),
             foregroundColor: Colors.black,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
-          child: const Text('Guardar'),
+          child: const Text('Guardar', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
         ),
       ],
+    );
+  }
+}
+
+class _QuickButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+  final bool isClear;
+
+  const _QuickButton({
+    required this.label,
+    required this.onTap,
+    this.isClear = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: isClear
+              ? const Color(0xFFFF6B6B).withOpacity(0.2)
+              : const Color(0xFF00D4AA).withOpacity(0.2),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isClear ? const Color(0xFFFF6B6B) : const Color(0xFF00D4AA),
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
     );
   }
 }
