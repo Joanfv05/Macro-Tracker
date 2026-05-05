@@ -14,7 +14,6 @@ class DashboardScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<NutritionProvider>(
       builder: (context, provider, _) {
-        // Agrupar comidas por categoría
         final Map<String, List<FoodEntry>> groupedFoods = {};
         for (final meal in _meals) {
           groupedFoods[meal] = provider.foods.where((f) => f.meal == meal).toList();
@@ -79,11 +78,10 @@ class DashboardScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
-                    child: MacroRing(
+                    child: AnimatedMacroRing(
                       calories: provider.dayLog.calories,
                       goalCalories: provider.goals.calories,
                       protein: provider.dayLog.protein,
@@ -92,7 +90,6 @@ class DashboardScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -131,9 +128,7 @@ class DashboardScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-
                 const SliverToBoxAdapter(child: SizedBox(height: 16)),
-
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -166,9 +161,7 @@ class DashboardScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-
                 const SliverToBoxAdapter(child: SizedBox(height: 24)),
-
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -195,7 +188,6 @@ class DashboardScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-
                 if (provider.foods.isEmpty)
                   SliverToBoxAdapter(
                     child: Padding(
@@ -230,7 +222,6 @@ class DashboardScreen extends StatelessWidget {
                       childCount: _meals.length,
                     ),
                   ),
-
                 const SliverToBoxAdapter(child: SizedBox(height: 100)),
               ],
             ),
@@ -303,11 +294,9 @@ class DashboardScreen extends StatelessWidget {
         onUpdate: (updatedFood) async {
           await provider.deleteFood(food);
           await provider.addFood(updatedFood);
-          if (context.mounted) Navigator.pop(context);
         },
         onDelete: () async {
           await provider.deleteFood(food);
-          if (context.mounted) Navigator.pop(context);
         },
       ),
     );
@@ -315,6 +304,224 @@ class DashboardScreen extends StatelessWidget {
 }
 
 const _meals = ['Desayuno', 'Almuerzo', 'Comida', 'Merienda', 'Cena', 'Snack'];
+
+// ─── Animated Macro Ring Widget ─────────────────────────────────────────────
+
+class AnimatedMacroRing extends StatefulWidget {
+  final double calories;
+  final double goalCalories;
+  final double protein;
+  final double carbs;
+  final double fat;
+
+  const AnimatedMacroRing({
+    super.key,
+    required this.calories,
+    required this.goalCalories,
+    required this.protein,
+    required this.carbs,
+    required this.fat,
+  });
+
+  @override
+  State<AnimatedMacroRing> createState() => _AnimatedMacroRingState();
+}
+
+class _AnimatedMacroRingState extends State<AnimatedMacroRing>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+  double _previousCalories = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+    _animation = CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic);
+    _previousCalories = widget.calories;
+  }
+
+  @override
+  void didUpdateWidget(AnimatedMacroRing oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.calories != widget.calories) {
+      _previousCalories = oldWidget.calories;
+      _controller.reset();
+      _controller.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Color _getCalorieColor() {
+    final progress = widget.goalCalories > 0 ? widget.calories / widget.goalCalories : 0;
+    if (progress >= 1.0) return const Color(0xFFFF4444);
+    if (progress >= 0.8) return const Color(0xFFFFB347);
+    return const Color(0xFF00D4AA);
+  }
+
+  String _getStatusText() {
+    final remaining = (widget.goalCalories - widget.calories).clamp(0, widget.goalCalories);
+    final over = widget.calories > widget.goalCalories;
+    if (over) {
+      return '+${(widget.calories - widget.goalCalories).toStringAsFixed(0)} exceso';
+    }
+    return '${remaining.toStringAsFixed(0)} restantes';
+  }
+
+  Color _getStatusColor() {
+    final progress = widget.goalCalories > 0 ? widget.calories / widget.goalCalories : 0;
+    if (progress >= 1.0) return const Color(0xFFFF4444);
+    if (progress >= 0.9) return const Color(0xFFFFB347);
+    return const Color(0xFF00D4AA);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = widget.goalCalories > 0
+        ? (widget.calories / widget.goalCalories).clamp(0.0, 1.0)
+        : 0.0;
+    final over = widget.calories > widget.goalCalories;
+    final ringColor = _getCalorieColor();
+
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) {
+        final animatedProgress = _controller.isAnimating
+            ? (_previousCalories / widget.goalCalories).clamp(0.0, 1.0) +
+            (_animation.value * (progress - (_previousCalories / widget.goalCalories).clamp(0.0, 1.0)))
+            : progress;
+
+        final animatedCalories = _controller.isAnimating
+            ? _previousCalories + (_animation.value * (widget.calories - _previousCalories))
+            : widget.calories;
+
+        return Center(
+          child: SizedBox(
+            width: 200,
+            height: 200,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                _RingPainter(
+                  progress: animatedProgress,
+                  color: ringColor,
+                  over: over,
+                ),
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    TweenAnimationBuilder(
+                      tween: Tween<double>(begin: _previousCalories, end: widget.calories),
+                      duration: const Duration(milliseconds: 600),
+                      curve: Curves.easeOutCubic,
+                      builder: (context, value, child) => Text(
+                        value.toInt().toString(),
+                        style: TextStyle(
+                          color: ringColor,
+                          fontSize: 38,
+                          fontWeight: FontWeight.w800,
+                          height: 1,
+                        ),
+                      ),
+                    ),
+                    const Text(
+                      'kcal',
+                      style: TextStyle(
+                        color: Colors.white54,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _getStatusText(),
+                      style: TextStyle(
+                        color: _getStatusColor(),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _RingPainter extends StatelessWidget {
+  final double progress;
+  final Color color;
+  final bool over;
+
+  const _RingPainter({
+    required this.progress,
+    required this.color,
+    required this.over,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: const Size(200, 200),
+      painter: _RingPainterCustom(progress: progress, color: color, over: over),
+    );
+  }
+}
+
+class _RingPainterCustom extends CustomPainter {
+  final double progress;
+  final Color color;
+  final bool over;
+
+  _RingPainterCustom({required this.progress, required this.color, required this.over});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2 - 12;
+    const strokeWidth = 14.0;
+
+    final bgPaint = Paint()
+      ..color = Colors.white.withOpacity(0.07)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawCircle(center, radius, bgPaint);
+
+    final progressPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round
+      ..color = color;
+
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      -3.14159 / 2,
+      2 * 3.14159 * progress,
+      false,
+      progressPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_RingPainterCustom old) {
+    return old.progress != progress || old.color != color;
+  }
+}
+
+// ─── Meal Section Widget ─────────────────────────────────────────────────────
 
 class _MealSection extends StatelessWidget {
   final String meal;
@@ -410,6 +617,8 @@ class _MealSection extends StatelessWidget {
   }
 }
 
+// ─── Food Tile Widget ────────────────────────────────────────────────────────
+
 class _FoodTile extends StatelessWidget {
   final FoodEntry food;
   final VoidCallback onTap;
@@ -500,7 +709,7 @@ class _FoodTile extends StatelessWidget {
   }
 }
 
-// ─── Food Detail Bottom Sheet MEJORADO ───────────────────────────────────────
+// ─── Food Detail Bottom Sheet CORREGIDA ─────────────────────────────────────
 
 class _FoodDetailBottomSheet extends StatefulWidget {
   final FoodEntry food;
@@ -519,11 +728,16 @@ class _FoodDetailBottomSheet extends StatefulWidget {
 
 class _FoodDetailBottomSheetState extends State<_FoodDetailBottomSheet> {
   late double _grams;
-  late double _calories;
-  late double _protein;
-  late double _carbs;
-  late double _fat;
+  late double _totalCalories;
+  late double _totalProtein;
+  late double _totalCarbs;
+  late double _totalFat;
   late String _name;
+
+  late double _per100gCalories;
+  late double _per100gProtein;
+  late double _per100gCarbs;
+  late double _per100gFat;
 
   final _gramsController = TextEditingController();
   final _caloriesController = TextEditingController();
@@ -532,29 +746,27 @@ class _FoodDetailBottomSheetState extends State<_FoodDetailBottomSheet> {
   final _fatController = TextEditingController();
   final _nameController = TextEditingController();
 
-  final FocusNode _nameFocus = FocusNode();
-  final FocusNode _gramsFocus = FocusNode();
-  final FocusNode _caloriesFocus = FocusNode();
-  final FocusNode _proteinFocus = FocusNode();
-  final FocusNode _carbsFocus = FocusNode();
-  final FocusNode _fatFocus = FocusNode();
-
   @override
   void initState() {
     super.initState();
     _name = widget.food.name;
     _grams = widget.food.grams;
-    _calories = widget.food.calories;
-    _protein = widget.food.protein;
-    _carbs = widget.food.carbs;
-    _fat = widget.food.fat;
+    _totalCalories = widget.food.calories;
+    _totalProtein = widget.food.protein;
+    _totalCarbs = widget.food.carbs;
+    _totalFat = widget.food.fat;
+
+    _per100gCalories = _grams > 0 ? (_totalCalories / _grams) * 100 : 0;
+    _per100gProtein = _grams > 0 ? (_totalProtein / _grams) * 100 : 0;
+    _per100gCarbs = _grams > 0 ? (_totalCarbs / _grams) * 100 : 0;
+    _per100gFat = _grams > 0 ? (_totalFat / _grams) * 100 : 0;
 
     _nameController.text = _name;
     _gramsController.text = _grams.toStringAsFixed(0);
-    _caloriesController.text = _calories.toStringAsFixed(0);
-    _proteinController.text = _protein.toStringAsFixed(1);
-    _carbsController.text = _carbs.toStringAsFixed(1);
-    _fatController.text = _fat.toStringAsFixed(1);
+    _caloriesController.text = _per100gCalories.toStringAsFixed(0);
+    _proteinController.text = _per100gProtein.toStringAsFixed(1);
+    _carbsController.text = _per100gCarbs.toStringAsFixed(1);
+    _fatController.text = _per100gFat.toStringAsFixed(1);
   }
 
   @override
@@ -565,289 +777,278 @@ class _FoodDetailBottomSheetState extends State<_FoodDetailBottomSheet> {
     _carbsController.dispose();
     _fatController.dispose();
     _nameController.dispose();
-    _nameFocus.dispose();
-    _gramsFocus.dispose();
-    _caloriesFocus.dispose();
-    _proteinFocus.dispose();
-    _carbsFocus.dispose();
-    _fatFocus.dispose();
     super.dispose();
   }
 
   void _updateValues() {
     setState(() {
-      _name = _nameController.text.trim();
-      _grams = double.tryParse(_gramsController.text) ?? 0;
-      _calories = double.tryParse(_caloriesController.text) ?? 0;
-      _protein = double.tryParse(_proteinController.text) ?? 0;
-      _carbs = double.tryParse(_carbsController.text) ?? 0;
-      _fat = double.tryParse(_fatController.text) ?? 0;
-    });
-  }
+      _per100gCalories = double.tryParse(_caloriesController.text) ?? 0;
+      _per100gProtein = double.tryParse(_proteinController.text) ?? 0;
+      _per100gCarbs = double.tryParse(_carbsController.text) ?? 0;
+      _per100gFat = double.tryParse(_fatController.text) ?? 0;
 
-  void _closeKeyboard() {
-    FocusScope.of(context).unfocus();
+      _grams = double.tryParse(_gramsController.text) ?? 0;
+      _name = _nameController.text.trim();
+
+      _totalCalories = (_per100gCalories * _grams) / 100;
+      _totalProtein = (_per100gProtein * _grams) / 100;
+      _totalCarbs = (_per100gCarbs * _grams) / 100;
+      _totalFat = (_per100gFat * _grams) / 100;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: _closeKeyboard,
-      child: Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-          left: 20,
-          right: 20,
-          top: 20,
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Detalle del alimento',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                      ),
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+        left: 20,
+        right: 20,
+        top: 20,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Editar alimento',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline, color: Color(0xFFFF6B6B)),
-                    onPressed: () {
-                      _closeKeyboard();
-                      showDialog(
-                        context: context,
-                        builder: (ctx) => AlertDialog(
-                          backgroundColor: const Color(0xFF1A1A1A),
-                          title: const Text('Eliminar', style: TextStyle(color: Colors.white)),
-                          content: const Text('¿Seguro que quieres eliminar este alimento?',
-                              style: TextStyle(color: Colors.white70)),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(ctx),
-                              child: const Text('Cancelar'),
-                            ),
-                            TextButton(
-                              onPressed: () {
-                                Navigator.pop(ctx);
-                                widget.onDelete();
-                              },
-                              child: const Text('Eliminar', style: TextStyle(color: Color(0xFFFF6B6B))),
-                            ),
-                          ],
-                        ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, color: Color(0xFFFF6B6B)),
+                  onPressed: () {
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        backgroundColor: const Color(0xFF1A1A1A),
+                        title: const Text('Eliminar', style: TextStyle(color: Colors.white)),
+                        content: const Text('¿Seguro que quieres eliminar este alimento?',
+                            style: TextStyle(color: Colors.white70)),
+                        actions: [
+                          TextButton(
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              widget.onDelete();
+                              Navigator.pop(context);
+                            },
+                            child: const Text('Eliminar', style: TextStyle(color: Color(0xFFFF6B6B))),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('Cancelar'),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Edita los valores por 100g y la cantidad',
+              style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12),
+            ),
+            const SizedBox(height: 20),
+
+            TextField(
+              controller: _nameController,
+              style: const TextStyle(color: Colors.white, fontSize: 16),
+              decoration: InputDecoration(
+                labelText: 'Nombre',
+                labelStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+                filled: true,
+                fillColor: const Color(0xFF252525),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+              onChanged: (_) => _updateValues(),
+            ),
+            const SizedBox(height: 16),
+
+            TextField(
+              controller: _gramsController,
+              keyboardType: TextInputType.number,
+              style: const TextStyle(color: Colors.white, fontSize: 16),
+              decoration: InputDecoration(
+                labelText: 'Cantidad (g)',
+                labelStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+                suffixText: 'g',
+                suffixStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                filled: true,
+                fillColor: const Color(0xFF252525),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+              onChanged: (_) => _updateValues(),
+            ),
+            const SizedBox(height: 16),
+
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF252525),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Valores por 100g',
+                    style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11),
+                  ),
+                  const SizedBox(height: 8),
+                  _MacroEditRow(
+                    icon: Icons.local_fire_department,
+                    iconColor: const Color(0xFF00D4AA),
+                    label: 'Calorías',
+                    controller: _caloriesController,
+                    unit: 'kcal',
+                    onChanged: (_) => _updateValues(),
+                  ),
+                  const Divider(color: Colors.white24, height: 16),
+                  _MacroEditRow(
+                    icon: Icons.fitness_center,
+                    iconColor: const Color(0xFF00D4AA),
+                    label: 'Proteína',
+                    controller: _proteinController,
+                    unit: 'g',
+                    onChanged: (_) => _updateValues(),
+                  ),
+                  const Divider(color: Colors.white24, height: 16),
+                  _MacroEditRow(
+                    icon: Icons.grain,
+                    iconColor: const Color(0xFFFFB347),
+                    label: 'Carbohidratos',
+                    controller: _carbsController,
+                    unit: 'g',
+                    onChanged: (_) => _updateValues(),
+                  ),
+                  const Divider(color: Colors.white24, height: 16),
+                  _MacroEditRow(
+                    icon: Icons.opacity,
+                    iconColor: const Color(0xFFFF6B6B),
+                    label: 'Grasas',
+                    controller: _fatController,
+                    unit: 'g',
+                    onChanged: (_) => _updateValues(),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A1A1A),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF00D4AA).withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Totales para ${_grams.toStringAsFixed(0)}g',
+                    style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _MacroPreview(
+                        label: 'Kcal',
+                        value: _totalCalories.toStringAsFixed(0),
+                        color: const Color(0xFF00D4AA),
+                      ),
+                      _MacroPreview(
+                        label: 'Prot',
+                        value: '${_totalProtein.toStringAsFixed(1)}g',
+                        color: const Color(0xFF00D4AA),
+                      ),
+                      _MacroPreview(
+                        label: 'Carbs',
+                        value: '${_totalCarbs.toStringAsFixed(1)}g',
+                        color: const Color(0xFFFFB347),
+                      ),
+                      _MacroPreview(
+                        label: 'Grasas',
+                        value: '${_totalFat.toStringAsFixed(1)}g',
+                        color: const Color(0xFFFF6B6B),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white54,
+                      side: const BorderSide(color: Colors.white24),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text('Cancelar'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      final updatedFood = FoodEntry(
+                        id: widget.food.id,
+                        name: _name,
+                        calories: _totalCalories,
+                        protein: _totalProtein,
+                        carbs: _totalCarbs,
+                        fat: _totalFat,
+                        grams: _grams,
+                        date: widget.food.date,
+                        meal: widget.food.meal,
                       );
-                    },
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-
-              TextField(
-                controller: _nameController,
-                focusNode: _nameFocus,
-                style: const TextStyle(color: Colors.white, fontSize: 16),
-                decoration: InputDecoration(
-                  labelText: 'Nombre',
-                  labelStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-                  filled: true,
-                  fillColor: const Color(0xFF252525),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-                onChanged: (_) => _updateValues(),
-                textInputAction: TextInputAction.next,
-                onEditingComplete: () => FocusScope.of(context).nextFocus(),
-              ),
-              const SizedBox(height: 16),
-
-              TextField(
-                controller: _gramsController,
-                focusNode: _gramsFocus,
-                keyboardType: TextInputType.number,
-                style: const TextStyle(color: Colors.white, fontSize: 16),
-                decoration: InputDecoration(
-                  labelText: 'Cantidad (g)',
-                  labelStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-                  suffixText: 'g',
-                  suffixStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
-                  filled: true,
-                  fillColor: const Color(0xFF252525),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-                onChanged: (_) => _updateValues(),
-                textInputAction: TextInputAction.next,
-                onEditingComplete: () => FocusScope.of(context).nextFocus(),
-              ),
-              const SizedBox(height: 16),
-
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF252525),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  children: [
-                    _MacroEditRow(
-                      icon: Icons.local_fire_department,
-                      iconColor: const Color(0xFF00D4AA),
-                      label: 'Calorías',
-                      controller: _caloriesController,
-                      focusNode: _caloriesFocus,
-                      unit: 'kcal',
-                      onChanged: (_) => _updateValues(),
-                      onNext: () => FocusScope.of(context).nextFocus(),
-                    ),
-                    const Divider(color: Colors.white24, height: 20),
-                    _MacroEditRow(
-                      icon: Icons.fitness_center,
-                      iconColor: const Color(0xFF00D4AA),
-                      label: 'Proteína',
-                      controller: _proteinController,
-                      focusNode: _proteinFocus,
-                      unit: 'g',
-                      onChanged: (_) => _updateValues(),
-                      onNext: () => FocusScope.of(context).nextFocus(),
-                    ),
-                    const Divider(color: Colors.white24, height: 20),
-                    _MacroEditRow(
-                      icon: Icons.grain,
-                      iconColor: const Color(0xFFFFB347),
-                      label: 'Carbohidratos',
-                      controller: _carbsController,
-                      focusNode: _carbsFocus,
-                      unit: 'g',
-                      onChanged: (_) => _updateValues(),
-                      onNext: () => FocusScope.of(context).nextFocus(),
-                    ),
-                    const Divider(color: Colors.white24, height: 20),
-                    _MacroEditRow(
-                      icon: Icons.opacity,
-                      iconColor: const Color(0xFFFF6B6B),
-                      label: 'Grasas',
-                      controller: _fatController,
-                      focusNode: _fatFocus,
-                      unit: 'g',
-                      onChanged: (_) => _updateValues(),
-                      onNext: () => _closeKeyboard(),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1A1A1A),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFF00D4AA).withOpacity(0.3)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Valores por 100g',
-                      style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _MacroPreview(
-                          label: 'Kcal',
-                          value: ((_calories / _grams) * 100).toStringAsFixed(0),
-                          color: const Color(0xFF00D4AA),
-                        ),
-                        _MacroPreview(
-                          label: 'Prot',
-                          value: '${((_protein / _grams) * 100).toStringAsFixed(1)}g',
-                          color: const Color(0xFF00D4AA),
-                        ),
-                        _MacroPreview(
-                          label: 'Carbs',
-                          value: '${((_carbs / _grams) * 100).toStringAsFixed(1)}g',
-                          color: const Color(0xFFFFB347),
-                        ),
-                        _MacroPreview(
-                          label: 'Grasas',
-                          value: '${((_fat / _grams) * 100).toStringAsFixed(1)}g',
-                          color: const Color(0xFFFF6B6B),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () {
-                        _closeKeyboard();
+                      await widget.onUpdate(updatedFood);
+                      if (mounted) {
                         Navigator.pop(context);
-                      },
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white54,
-                        side: const BorderSide(color: Colors.white24),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF00D4AA),
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Text('Cancelar'),
                     ),
+                    child: const Text('Guardar cambios', style: TextStyle(fontWeight: FontWeight.w600)),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        _closeKeyboard();
-                        final updatedFood = FoodEntry(
-                          id: widget.food.id,
-                          name: _name,
-                          calories: _calories,
-                          protein: _protein,
-                          carbs: _carbs,
-                          fat: _fat,
-                          grams: _grams,
-                          date: widget.food.date,
-                          meal: widget.food.meal,
-                        );
-                        widget.onUpdate(updatedFood);
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF00D4AA),
-                        foregroundColor: Colors.black,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text('Guardar cambios', style: TextStyle(fontWeight: FontWeight.w600)),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-            ],
-          ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+          ],
         ),
       ),
     );
@@ -859,20 +1060,16 @@ class _MacroEditRow extends StatelessWidget {
   final Color iconColor;
   final String label;
   final TextEditingController controller;
-  final FocusNode? focusNode;
   final String unit;
   final Function(String) onChanged;
-  final VoidCallback? onNext;
 
   const _MacroEditRow({
     required this.icon,
     required this.iconColor,
     required this.label,
     required this.controller,
-    this.focusNode,
     required this.unit,
     required this.onChanged,
-    this.onNext,
   });
 
   @override
@@ -884,7 +1081,6 @@ class _MacroEditRow extends StatelessWidget {
         Expanded(
           child: TextField(
             controller: controller,
-            focusNode: focusNode,
             keyboardType: TextInputType.number,
             style: const TextStyle(color: Colors.white, fontSize: 16),
             decoration: InputDecoration(
@@ -895,8 +1091,6 @@ class _MacroEditRow extends StatelessWidget {
               border: InputBorder.none,
             ),
             onChanged: onChanged,
-            textInputAction: TextInputAction.next,
-            onEditingComplete: onNext,
           ),
         ),
       ],
