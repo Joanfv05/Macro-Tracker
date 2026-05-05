@@ -20,7 +20,7 @@ class DatabaseService {
 
     return openDatabase(
       path,
-      version: 2,
+      version: 1,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE food_entries (
@@ -57,18 +57,7 @@ class DatabaseService {
             steps INTEGER DEFAULT 8000
           )
         ''');
-        await db.execute('''
-          CREATE TABLE profile (
-            name TEXT,
-            age INTEGER,
-            weight REAL,
-            height REAL,
-            gender TEXT,
-            goal TEXT
-            activity TEXT
-          )
-        ''');
-        // Insert default goals
+
         await db.insert('goals', {
           'id': 1,
           'calories': 2000,
@@ -78,38 +67,6 @@ class DatabaseService {
           'water': 2.5,
           'steps': 8000,
         });
-        // Insert default profile
-        await db.insert('profile', {
-          'name': '',
-          'age': 25,
-          'weight': 70,
-          'height': 170,
-          'gender': 'Hombre',
-          'goal': 'Definición',
-          'activity': 'moderate',
-        });
-      },
-      onUpgrade: (db, oldVersion, newVersion) async {
-        if (oldVersion < 2) {
-          await db.execute('''
-            CREATE TABLE profile (
-              name TEXT,
-              age INTEGER,
-              weight REAL,
-              height REAL,
-              gender TEXT,
-              goal TEXT
-            )
-          ''');
-          await db.insert('profile', {
-            'name': '',
-            'age': 25,
-            'weight': 70,
-            'height': 170,
-            'gender': 'Hombre',
-            'goal': 'Definición',
-          });
-        }
       },
     );
   }
@@ -229,22 +186,5 @@ class DatabaseService {
       where: 'id = ?',
       whereArgs: [1],
     );
-  }
-
-  // ─── PROFILE ────────────────────────────────────────────────────────────────
-
-  Future<void> saveProfile(UserProfile profile) async {
-    final database = await db;
-    // Primero borramos el perfil existente (solo debe haber uno)
-    await database.delete('profile');
-    // Insertamos el nuevo
-    await database.insert('profile', profile.toMap());
-  }
-
-  Future<UserProfile> getProfile() async {
-    final database = await db;
-    final maps = await database.query('profile');
-    if (maps.isEmpty) return const UserProfile();
-    return UserProfile.fromMap(maps.first);
   }
 }

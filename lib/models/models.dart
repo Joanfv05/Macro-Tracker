@@ -6,8 +6,8 @@ class FoodEntry {
   final double carbs;
   final double fat;
   final double grams;
-  final String date; // YYYY-MM-DD
-  final String meal; // breakfast, lunch, dinner, snack
+  final String date;
+  final String meal;
 
   FoodEntry({
     this.id,
@@ -52,7 +52,7 @@ class DayLog {
   final double protein;
   final double carbs;
   final double fat;
-  final double water; // litros
+  final double water;
   final int steps;
 
   DayLog({
@@ -127,8 +127,8 @@ class UserProfile {
   final int age;
   final double weight;
   final double height;
-  final String gender; // 'Hombre' o 'Mujer'
-  final String goal;   // 'Definición', 'Mantenimiento',
+  final String gender;
+  final String goal;
   final String activity;
 
   const UserProfile({
@@ -141,7 +141,8 @@ class UserProfile {
     this.activity = 'moderate',
   });
 
-  Map<String, dynamic> toMap() => {
+  // Solo para SharedPreferences
+  Map<String, dynamic> toJson() => {
     'name': name,
     'age': age,
     'weight': weight,
@@ -151,13 +152,13 @@ class UserProfile {
     'activity': activity,
   };
 
-  factory UserProfile.fromMap(Map<String, dynamic> map) => UserProfile(
-    name: map['name'] ?? '',
-    age: (map['age'] ?? 25).toInt(),
-    weight: (map['weight'] ?? 70).toDouble(),
-    height: (map['height'] ?? 170).toDouble(),
-    gender: map['gender'] ?? 'Hombre',
-    goal: map['goal'] ?? 'Definición',
-    activity: map['activity'] ?? 'moderate',
+  factory UserProfile.fromJson(Map<String, dynamic> json) => UserProfile(
+    name: json['name'] ?? '',
+    age: json['age'] ?? 25,
+    weight: (json['weight'] ?? 70).toDouble(),
+    height: (json['height'] ?? 170).toDouble(),
+    gender: json['gender'] ?? 'Hombre',
+    goal: json['goal'] ?? 'Definición',
+    activity: json['activity'] ?? 'moderate',
   );
 }

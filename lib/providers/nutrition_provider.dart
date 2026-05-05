@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 import '../services/database_service.dart';
 import '../models/models.dart';
 import 'dart:async';
@@ -67,8 +69,18 @@ class NutritionProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // 👈 PERFIL DESDE SHAREDPREFERENCES
   Future<void> _loadProfile() async {
-    _profile = await _db.getProfile();
+    final prefs = await SharedPreferences.getInstance();
+    final profileJson = prefs.getString('user_profile');
+
+    if (profileJson != null) {
+      final Map<String, dynamic> json = jsonDecode(profileJson);
+      _profile = UserProfile.fromJson(json);
+    } else {
+      _profile = const UserProfile();
+    }
+
     notifyListeners();
   }
 
@@ -137,9 +149,12 @@ class NutritionProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // 👈 GUARDAR PERFIL EN SHAREDPREFERENCES
   Future<void> saveProfile(UserProfile profile) async {
     _profile = profile;
-    await _db.saveProfile(profile);
+    final prefs = await SharedPreferences.getInstance();
+    final profileJson = jsonEncode(profile.toJson());
+    await prefs.setString('user_profile', profileJson);
     notifyListeners();
   }
 

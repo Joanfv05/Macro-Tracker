@@ -9,16 +9,22 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('es_ES', null);
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-  runApp(const MacroTrackerApp());
+
+  final nutritionProvider = NutritionProvider();
+  await nutritionProvider.init();
+
+  runApp(MacroTrackerApp(nutritionProvider: nutritionProvider));
 }
 
 class MacroTrackerApp extends StatelessWidget {
-  const MacroTrackerApp({super.key});
+  final NutritionProvider nutritionProvider;
+
+  const MacroTrackerApp({super.key, required this.nutritionProvider});
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => NutritionProvider()..init(),
+    return ChangeNotifierProvider.value(
+      value: nutritionProvider,
       child: MaterialApp(
         title: 'Macro Tracker',
         debugShowCheckedModeBanner: false,
