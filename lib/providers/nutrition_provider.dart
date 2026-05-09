@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'dart:async';
 import '../services/database_service.dart';
 import '../models/models.dart';
-import 'dart:async';
+import '../services/open_food_facts_service.dart';
 
 class NutritionProvider extends ChangeNotifier {
   final DatabaseService _db = DatabaseService();
+  final OpenFoodFactsService _offService = OpenFoodFactsService();
 
   UserGoals _goals = UserGoals();
   UserProfile _profile = const UserProfile();
@@ -40,13 +42,11 @@ class NutritionProvider extends ChangeNotifier {
   List<DayLog> _weekHistory = [];
   List<DayLog> get weekHistory => _weekHistory;
 
+  // ── Init ──────────────────────────────────────────────────────────────────
+
   Future<void> init() async {
     _selectedDate = _getToday();
-    await Future.wait([
-      _loadGoals(),
-      _loadProfile(),
-      _loadData(),
-    ]);
+    await Future.wait([_loadGoals(), _loadProfile(), _loadData()]);
     _startAutoRefresh();
   }
 
@@ -57,39 +57,28 @@ class NutritionProvider extends ChangeNotifier {
 
   void _startAutoRefresh() {
     _refreshTimer = Timer.periodic(const Duration(minutes: 1), (_) {
-      final today = _getToday();
-      if (_selectedDate == today) {
-        _loadData();
-      }
+      if (_selectedDate == _getToday()) _loadData();
     });
   }
+
+  // ── Carga de datos ────────────────────────────────────────────────────────
 
   Future<void> _loadGoals() async {
     _goals = await _db.getGoals();
     notifyListeners();
   }
 
-  // 👈 PERFIL DESDE SHAREDPREFERENCES
   Future<void> _loadProfile() async {
     final prefs = await SharedPreferences.getInstance();
     final profileJson = prefs.getString('user_profile');
-
-    if (profileJson != null) {
-      final Map<String, dynamic> json = jsonDecode(profileJson);
-      _profile = UserProfile.fromJson(json);
-    } else {
-      _profile = const UserProfile();
-    }
-
+    _profile = profileJson != null
+        ? UserProfile.fromJson(jsonDecode(profileJson))
+        : const UserProfile();
     notifyListeners();
   }
 
   Future<void> _loadData() async {
-    await Future.wait([
-      _loadDayLog(),
-      _loadFoods(),
-      _loadWeekHistory(),
-    ]);
+    await Future.wait([_loadDayLog(), _loadFoods(), _loadWeekHistory()]);
     notifyListeners();
   }
 
@@ -105,30 +94,41 @@ class NutritionProvider extends ChangeNotifier {
     _weekHistory = await _db.getLastNDays(7);
   }
 
+  // ── Navegación de fecha ───────────────────────────────────────────────────
+
   Future<void> goToDate(DateTime date) async {
-    _selectedDate = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    _selectedDate =
+    '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
     await _loadData();
   }
 
+  // ── Búsqueda de alimentos ─────────────────────────────────────────────────
+
+  Future<List<FoodSearchResult>> searchFood(String query) async {
+    if (query.trim().isEmpty) return [];
+
+    // Flujo: MyMemory traduce ES→EN → USDA → Open Food Facts fallback
+    return _offService.search(query);
+  }
+
+  // ── Comida ────────────────────────────────────────────────────────────────
+
   Future<void> addFood(FoodEntry entry) async {
     await _db.insertFood(entry);
-    if (entry.date == _selectedDate) {
-      await _loadData();
-    } else if (entry.date == _getToday()) {
+    if (entry.date == _selectedDate || entry.date == _getToday()) {
       await _loadData();
     }
     notifyListeners();
   }
 
   Future<void> deleteFood(FoodEntry food) async {
-    if (food.id != null) {
-      await _db.deleteFood(food.id!, food.date);
-      if (food.date == _selectedDate) {
-        await _loadData();
-      }
-      notifyListeners();
-    }
+    if (food.id == null) return;
+    await _db.deleteFood(food.id!, food.date);
+    if (food.date == _selectedDate) await _loadData();
+    notifyListeners();
   }
+
+  // ── Agua y pasos ──────────────────────────────────────────────────────────
 
   Future<void> updateWater(double liters) async {
     await _db.updateWater(_selectedDate, liters);
@@ -142,6 +142,8 @@ class NutritionProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── Objetivos y perfil ────────────────────────────────────────────────────
+
   Future<void> saveGoals(UserGoals goals) async {
     _goals = goals;
     await _db.saveGoals(goals);
@@ -149,12 +151,10 @@ class NutritionProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // 👈 GUARDAR PERFIL EN SHAREDPREFERENCES
   Future<void> saveProfile(UserProfile profile) async {
     _profile = profile;
     final prefs = await SharedPreferences.getInstance();
-    final profileJson = jsonEncode(profile.toJson());
-    await prefs.setString('user_profile', profileJson);
+    await prefs.setString('user_profile', jsonEncode(profile.toJson()));
     notifyListeners();
   }
 

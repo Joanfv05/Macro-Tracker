@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/models.dart';
-import '../../services/food_api_service.dart';
+import '../../services/open_food_facts_service.dart';
 import 'app_colors.dart';
 import 'meal_selector.dart';
 

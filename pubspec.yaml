@@ -28,6 +28,8 @@ dependencies:
   
   # Iconos extra
   cupertino_icons: ^1.0.6
+  oauth1: ^2.0.0
+  crypto: ^3.0.3
 
   # Scanner móvil
   mobile_scanner: ^5.2.0

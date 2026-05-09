@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/nutrition_provider.dart';
 import '../models/models.dart';
-import '../services/food_api_service.dart';
+import '../services/open_food_facts_service.dart';
 import 'barcode_scanner_screen.dart';
 import '../widgets/add_food/app_colors.dart';
 import '../widgets/add_food/search_tab.dart';
@@ -20,7 +20,6 @@ class _AddFoodScreenState extends State<AddFoodScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabs;
   final _searchController = TextEditingController();
-  final _api = OpenFoodFactsService();
 
   List<FoodSearchResult> _results = [];
   bool _searching = false;
@@ -44,20 +43,45 @@ class _AddFoodScreenState extends State<AddFoodScreen>
   }
 
   Future<void> _search(String query) async {
-    if (query.trim().isEmpty) { setState(() => _results = []); return; }
+    if (query.trim().isEmpty) {
+      setState(() => _results = []);
+      return;
+    }
     setState(() => _searching = true);
-    final results = await _api.search(query.trim());
+    final results =
+    await context.read<NutritionProvider>().searchFood(query.trim());
     if (!mounted) return;
-    setState(() { _results = results; _searching = false; });
-    if (results.isEmpty) _showSnack('No se encontraron alimentos. Usa "Manual" o escanea el código de barras.');
+    setState(() {
+      _results = results;
+      _searching = false;
+    });
+    if (results.isEmpty) {
+      _showSnack(
+          'No se encontraron alimentos. Usa "Manual" o escanea el código de barras.');
+    }
   }
 
   Future<void> _openScanner() async {
-    final result = await Navigator.push<FoodSearchResult>(
+    final result = await Navigator.push<dynamic>(
       context,
       MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()),
     );
-    if (result != null && mounted) _showFoodSheet(result, editable: true);
+
+    if (!mounted) return;
+
+    if (result == null) return;
+
+    if (result is FoodSearchResult) {
+      // Producto encontrado por código de barras — mostrar sheet
+      _showFoodSheet(result, editable: true);
+    } else if (result is String && result.startsWith('NOTFOUND:')) {
+      // Producto no encontrado — ir a búsqueda manual con el código
+      final barcode = result.substring('NOTFOUND:'.length);
+      _tabs.animateTo(0); // ir a pestaña Buscar
+      _searchController.text = barcode;
+      await _search(barcode);
+      _showSnack('Código no encontrado. Prueba a buscar el nombre del producto.');
+    }
   }
 
   void _showFoodSheet(FoodSearchResult result, {bool editable = false}) {
@@ -79,7 +103,10 @@ class _AddFoodScreenState extends State<AddFoodScreen>
 
   Future<void> _saveAndPop(FoodEntry entry) async {
     await context.read<NutritionProvider>().addFood(entry);
-    if (mounted) { Navigator.pop(context); Navigator.pop(context); }
+    if (mounted) {
+      Navigator.pop(context);
+      Navigator.pop(context);
+    }
   }
 
   Future<void> _saveManual(FoodEntry entry) async {
@@ -89,7 +116,10 @@ class _AddFoodScreenState extends State<AddFoodScreen>
 
   void _showSnack(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: AppColors.orange, duration: const Duration(seconds: 3)),
+      SnackBar(
+          content: Text(msg),
+          backgroundColor: AppColors.orange,
+          duration: const Duration(seconds: 3)),
     );
   }
 
